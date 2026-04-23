@@ -1,0 +1,80 @@
+# AI Recorder
+
+一款面向 Android 的智能录音应用，集成本地与云端语音转录、AI 对话及本地文件记忆功能。支持触摸与鼠标操作。
+
+## 功能概览
+
+### 录音
+- 高质量录音（M4A 格式，192 kbps），支持暂停/继续与实时时长显示
+- 录音文件保存至公共存储路径，支持外部访问
+- 录音列表展示文件名、录制日期、时长，支持重命名
+
+### 语音转录
+- **本地转录（Vosk）**：离线运行，支持中文与英文，无需网络
+  - 转录管线：M4A → MediaExtractor 解压 → MediaCodec 解码为 PCM → TarsosDSP 重采样至 16 kHz → Vosk 转录
+  - 输出带时间戳的字幕文件
+- **云端转录（讯飞标准版）**：音频直接上传讯飞 API，无本地解码开销，需用户提供 APPID 与 Secret Key
+
+### 字幕查看器
+转录完成后进入专用查看界面：
+- 上方音频播放器（约占 1/5 屏幕）：播放/暂停、±0.2 秒步进、进度条拖拽、实时时长显示
+- 下方字幕区：多行展示，当前句高亮，支持滑动浏览与快速拖拽跳转
+- 自动滚动模式：当前句始终保持在第二行
+- 支持删除转录结果并重新转录（二次确认）
+
+### AI 对话
+- **本地模型（Qwen 2.5 1.5B）**：完全离线，基于 LiteRT-LM 运行，无需任何 API Key
+- **云端模型（Qwen3-Max）**：阿里云 DashScope API，支持深度思考（reasoning_content）与流式输出，需用户提供 API Key
+  - 可选联网搜索（原生 enable_search，无需 Tavily）
+  - 可选 **Tavily 联网检索**增强（需独立 Tavily API Key）
+  - 可选 **本地文件记忆**：将录音库的摘要索引注入对话上下文
+
+### 音频总结与本地文件记忆
+- 使用 **Qwen Omni Plus** 对录音文件进行 AI 音频总结（限 30 分钟 / 100 MB 以内）
+- 二次总结：对第一次总结结果再压缩至 125 字以内，仅用于索引，不在 UI 展示
+- 本地内容同步索引（JSON）：记录每条录音的文件名、时长、日期及二次总结，用于 AI 对话时的上下文注入
+- 索引在应用启动、每 10 分钟及手动点击"本地内容同步"时自动刷新
+
+### 其他功能
+- 音频导入：支持从外部导入音频文件至录音库
+- 音频分享（导出）：将录音文件分享至其他应用
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| UI | Jetpack Compose + Material 3 |
+| 架构 | MVVM（ViewModel + StateFlow） |
+| 数据库 | Room |
+| 本地 ASR | Vosk（中文 / 英文离线模型） |
+| 本地 LLM | LiteRT-LM（Qwen 2.5 1.5B Instruct，INT8 量化） |
+| 音频处理 | MediaRecorder / MediaExtractor / MediaCodec + TarsosDSP |
+| 云端 ASR | 讯飞语音转写标准版 API |
+| 云端 LLM | 阿里云 DashScope — Qwen3-Max / Qwen Omni Plus |
+| 联网搜索 | Tavily Search API（可选） |
+| 网络 | OkHttp |
+
+## 环境要求
+
+- Android 14+（minSdk 35，targetSdk 36）
+- 编译需 Android Studio Hedgehog 或更高版本
+
+## 大文件说明
+
+本地 LLM 模型文件（`app/src/main/assets/qwen/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm`，约 1.5 GB）通过 **Git LFS** 管理。克隆后需执行：
+
+```bash
+git lfs pull
+```
+
+## API Key 配置
+
+以下服务需在应用设置界面手动填入对应密钥：
+
+| 服务 | 所需凭据 |
+|------|---------|
+| 讯飞语音转写 | APPID + Secret Key |
+| Qwen3-Max / Qwen Omni Plus | 阿里云 DashScope API Key |
+| Tavily 联网搜索（可选） | Tavily API Key |
+
+所有密钥均仅存储在本地设备，不上传至任何服务器。
