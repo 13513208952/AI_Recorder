@@ -51,6 +51,11 @@ class PlayerViewModel() : ViewModel() {
         audioPlayer.rewind(200)
     }
 
+    fun stopPlayback() {
+        _currentlyPlayingItem.value = null
+        audioPlayer.stop()
+    }
+
     override fun onCleared() {
         super.onCleared()
         audioPlayer.stop()

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface RecordingDao {
     @Insert
-    suspend fun insert(recording: RecordingItem)
+    suspend fun insert(recording: RecordingItem): Long
 
     @Update
     suspend fun update(recording: RecordingItem)

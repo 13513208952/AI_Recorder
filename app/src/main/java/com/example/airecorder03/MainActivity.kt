@@ -320,14 +320,16 @@ fun AIrecorderAppLayout(
         val pagerState = rememberPagerState(pageCount = { 3 })
         val coroutineScope = rememberCoroutineScope()
 
-        // 生命周期感知：监听聊天界面切入切出
+        // 生命周期感知：监听聊天界面切入切出（Chat 现在是 page 2）
         LaunchedEffect(pagerState.currentPage) {
-            if (pagerState.currentPage == 0) {
+            if (pagerState.currentPage == 2) {
                 chatViewModel.onChatResumed()
             } else {
                 chatViewModel.onChatPaused()
             }
         }
+
+        val transcriptionState by recordingViewModel.transcriptionState.collectAsState()
 
         Box(modifier = modifier.fillMaxSize()) {
             HorizontalPager(
@@ -335,56 +337,61 @@ fun AIrecorderAppLayout(
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 when (page) {
-                    0 -> ChatScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    viewModel = chatViewModel,
-                    recordingsListViewModel = recordingsListViewModel,
-                    onNavigateToNext = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(1)
+                    0 -> RecordingScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        isRecording = recordingViewModel.isRecording,
+                        isPaused = recordingViewModel.isPaused,
+                        duration = recordingViewModel.recordingDuration,
+                        transcriptionState = transcriptionState,
+                        transcriptionLanguage = recordingViewModel.transcriptionLanguage,
+                        recentReplays = recordingViewModel.recentReplays,
+                        isSavingReplay = recordingViewModel.isSavingReplay,
+                        onStartClick = onStartRecording,
+                        onStopClick = { recordingViewModel.stopRecording() },
+                        onPauseClick = { recordingViewModel.pauseRecording() },
+                        onResumeClick = { recordingViewModel.resumeRecording() },
+                        onTriggerReplay = { recordingViewModel.triggerInstantReplay() },
+                        onStartTranscription = { lang -> recordingViewModel.startLiveTranscription(lang) },
+                        onStopTranscription = { recordingViewModel.stopLiveTranscription() },
+                        onToggleLanguage = {
+                            recordingViewModel.changeTranscriptionLanguage(
+                                if (recordingViewModel.transcriptionLanguage == "CN") "EN" else "CN"
+                            )
+                        },
+                        playerViewModel = playerViewModel,
+                        onNavigateToNext = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(1) }
                         }
-                    }
-                )
-                1 -> RecordingsListScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    recordings = recordings,
-                    playerViewModel = playerViewModel,
-                    onTranscribe = onTranscribe,
-                    onView = { recording -> viewingRecording = recording },
-                    onEdit = { recording -> editingRecording = recording },
-                    onDelete = { recording -> deletingRecording = recording },
-                    onImportAudio = onImportAudio,
-                    onShareRecording = onShareRecording,
-                    transcribingFileId = transcribingFileId,
-                    summarizingFileId = summarizingFileId,
-                    onSummarize = { recording -> recordingsListViewModel.summarizeRecording(recording) },
-                    onViewSummary = { recording -> viewingSummaryRecording = recording },
-                    onNavigateToPrevious = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(0)
+                    )
+                    1 -> RecordingsListScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        recordings = recordings,
+                        playerViewModel = playerViewModel,
+                        onTranscribe = onTranscribe,
+                        onView = { recording -> viewingRecording = recording },
+                        onEdit = { recording -> editingRecording = recording },
+                        onDelete = { recording -> deletingRecording = recording },
+                        onImportAudio = onImportAudio,
+                        onShareRecording = onShareRecording,
+                        transcribingFileId = transcribingFileId,
+                        summarizingFileId = summarizingFileId,
+                        onSummarize = { recording -> recordingsListViewModel.summarizeRecording(recording) },
+                        onViewSummary = { recording -> viewingSummaryRecording = recording },
+                        onNavigateToPrevious = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                        },
+                        onNavigateToNext = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(2) }
                         }
-                    },
-                    onNavigateToNext = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(2)
+                    )
+                    2 -> ChatScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        viewModel = chatViewModel,
+                        recordingsListViewModel = recordingsListViewModel,
+                        onNavigateToPrevious = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(1) }
                         }
-                    }
-                )
-                2 -> RecordingScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    isRecording = recordingViewModel.isRecording,
-                    isPaused = recordingViewModel.isPaused,
-                    duration = recordingViewModel.recordingDuration,
-                    onStartClick = onStartRecording,
-                    onStopClick = { recordingViewModel.stopRecording() },
-                    onPauseClick = { recordingViewModel.pauseRecording() },
-                    onResumeClick = { recordingViewModel.resumeRecording() },
-                    onNavigateToPrevious = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(1)
-                        }
-                    }
-                )
+                    )
                 }
             }
 
@@ -754,7 +761,7 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel,
     recordingsListViewModel: RecordingsListViewModel,
-    onNavigateToNext: () -> Unit
+    onNavigateToPrevious: () -> Unit
 ) {
     var textState by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -1077,14 +1084,14 @@ fun ChatScreen(
         }
 
         IconButton(
-            onClick = onNavigateToNext,
+            onClick = onNavigateToPrevious,
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 8.dp)
+                .align(Alignment.CenterStart)
+                .padding(start = 8.dp)
                 .size(48.dp)
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Go to List",
                 tint = Color.Gray
             )
@@ -2249,183 +2256,563 @@ fun RecordingScreen(
     isRecording: Boolean,
     isPaused: Boolean,
     duration: String,
+    transcriptionState: LiveTranscriptionState,
+    transcriptionLanguage: String,
+    recentReplays: List<RecordingItem>,
+    isSavingReplay: Boolean,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
     onPauseClick: () -> Unit,
     onResumeClick: () -> Unit,
-    onNavigateToPrevious: () -> Unit
+    onTriggerReplay: () -> Unit,
+    onStartTranscription: (String) -> Unit,
+    onStopTranscription: () -> Unit,
+    onToggleLanguage: () -> Unit,
+    playerViewModel: PlayerViewModel,
+    onNavigateToNext: () -> Unit
 ) {
+    val currentlyPlayingItem by playerViewModel.currentlyPlayingItem.collectAsState()
+    val isPlayerPlaying by playerViewModel.isPlaying.collectAsState()
+    val transcriptionActive = transcriptionState.isActive || transcriptionState.isModelLoading
+
+    val statusLabel = when {
+        !isRecording -> "准备录音"
+        isPaused -> "已暂停"
+        else -> "正在录音"
+    }
+    val statusColor = when {
+        !isRecording -> MaterialTheme.colorScheme.onSurfaceVariant
+        isPaused -> MaterialTheme.colorScheme.tertiary
+        else -> AccentRecord
+    }
+
     Box(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Status label
-            val statusLabel = when {
-                !isRecording -> "准备录音"
-                isPaused -> "已暂停"
-                else -> "正在录音"
-            }
-            val statusColor = when {
-                !isRecording -> MaterialTheme.colorScheme.onSurfaceVariant
-                isPaused -> MaterialTheme.colorScheme.tertiary
-                else -> AccentRecord
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                if (isRecording && !isPaused) {
-                    // Recording dot pulse
-                    val infiniteTransition = rememberInfiniteTransition(label = "recDot")
-                    val dotAlpha by infiniteTransition.animateFloat(
-                        initialValue = 0.3f,
-                        targetValue = 1f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(900),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "recDotAlpha"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(AccentRecord.copy(alpha = dotAlpha))
-                    )
-                }
-                Text(
-                    text = statusLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = statusColor
-                )
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+        if (!transcriptionActive) {
+            // ══ 正常模式：按钮居中显示 ═══════════════════════════════════════
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                // 估算核心内容高度，动态计算顶部间距使按钮保持居中
+                val coreEst = if (isRecording) 430.dp else 310.dp
+                val topSpace = ((maxHeight - coreEst) / 2).coerceAtLeast(24.dp)
 
-            // Large timer
-            Text(
-                text = duration,
-                style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Light,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // Central record button with pulsing ring when active
-            Box(
-                modifier = Modifier.size(200.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isRecording && !isPaused) {
-                    val infiniteTransition = rememberInfiniteTransition(label = "ring")
-                    val ringScale by infiniteTransition.animateFloat(
-                        initialValue = 0.95f,
-                        targetValue = 1.15f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1400),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "ringScale"
-                    )
-                    val ringAlpha by infiniteTransition.animateFloat(
-                        initialValue = 0.35f,
-                        targetValue = 0.05f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1400),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "ringAlpha"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size((160f * ringScale).dp)
-                            .clip(CircleShape)
-                            .background(AccentRecord.copy(alpha = ringAlpha))
-                    )
-                }
-
-                // Main record/stop button
-                val mainColor = when {
-                    !isRecording -> AccentRecord
-                    else -> MaterialTheme.colorScheme.surface
-                }
-                val mainContent = when {
-                    !isRecording -> MaterialTheme.colorScheme.onPrimary
-                    else -> AccentRecord
-                }
-                Surface(
-                    onClick = if (isRecording) onStopClick else onStartClick,
+                Column(
                     modifier = Modifier
-                        .size(140.dp)
-                        .shadow(Elevations.RaisedCard, CircleShape),
-                    shape = CircleShape,
-                    color = mainColor,
-                    border = if (isRecording) androidx.compose.foundation.BorderStroke(3.dp, AccentRecord) else null
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isRecording) Icons.Filled.Stop else Icons.Filled.Mic,
-                            contentDescription = if (isRecording) "Stop" else "Record",
-                            tint = mainContent,
-                            modifier = Modifier.size(48.dp)
+                    Spacer(Modifier.height(topSpace))
+
+                    // Status row
+                    RecordingStatusRow(isRecording, isPaused, statusLabel, statusColor)
+
+                    if (isRecording) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(duration,
+                            style = MaterialTheme.typography.displayLarge,
+                            fontWeight = FontWeight.Light,
+                            color = MaterialTheme.colorScheme.onBackground)
+                    }
+
+                    Spacer(Modifier.height(if (isRecording) 40.dp else 48.dp))
+
+                    // Main button (full size)
+                    RecordMainButton(
+                        isRecording = isRecording,
+                        isPaused = isPaused,
+                        compact = false,
+                        onStartClick = onStartClick,
+                        onStopClick = onStopClick
+                    )
+
+                    Spacer(Modifier.height(28.dp))
+
+                    // Secondary controls
+                    if (isRecording) {
+                        RecordingControlsRow(
+                            isPaused = isPaused,
+                            isSavingReplay = isSavingReplay,
+                            transcriptionActive = false,
+                            transcriptionLanguage = transcriptionLanguage,
+                            onPauseClick = onPauseClick,
+                            onResumeClick = onResumeClick,
+                            onTriggerReplay = onTriggerReplay,
+                            onStartTranscription = { onStartTranscription(transcriptionLanguage) },
+                            onStopTranscription = onStopTranscription,
+                            onToggleLanguage = onToggleLanguage
+                        )
+                    } else {
+                        Text("轻触开始录音",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    // Instant replay cards
+                    if (recentReplays.isNotEmpty()) {
+                        Spacer(Modifier.height(24.dp))
+                        ReplaySection(
+                            replays = recentReplays,
+                            currentlyPlayingItem = currentlyPlayingItem,
+                            isPlayerPlaying = isPlayerPlaying,
+                            playerViewModel = playerViewModel
                         )
                     }
+
+                    Spacer(Modifier.height(56.dp))
                 }
             }
+        } else {
+            // ══ 转录模式：顶部字幕区 + 紧凑按钮 ═════════════════════════════
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(Modifier.height(20.dp))
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Pause/Resume secondary action (only while recording)
-            if (isRecording) {
-                FilledTonalIconButton(
-                    onClick = if (isPaused) onResumeClick else onPauseClick,
-                    modifier = Modifier.size(56.dp),
-                    shape = CircleShape,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+                // Compact status + timer
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                        contentDescription = if (isPaused) "Resume" else "Pause",
-                        modifier = Modifier.size(28.dp)
+                    RecordingStatusRow(isRecording, isPaused, statusLabel, statusColor)
+                    if (isRecording) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(duration,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Light,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                // Subtitle area
+                LiveSubtitleCard(
+                    state = transcriptionState,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 260.dp)
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                // Compact button
+                RecordMainButton(
+                    isRecording = isRecording,
+                    isPaused = isPaused,
+                    compact = true,
+                    onStartClick = onStartClick,
+                    onStopClick = onStopClick
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                // Controls
+                if (isRecording) {
+                    RecordingControlsRow(
+                        isPaused = isPaused,
+                        isSavingReplay = isSavingReplay,
+                        transcriptionActive = true,
+                        transcriptionLanguage = transcriptionLanguage,
+                        onPauseClick = onPauseClick,
+                        onResumeClick = onResumeClick,
+                        onTriggerReplay = onTriggerReplay,
+                        onStartTranscription = { onStartTranscription(transcriptionLanguage) },
+                        onStopTranscription = onStopTranscription,
+                        onToggleLanguage = onToggleLanguage
                     )
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = if (isPaused) "继续" else "暂停",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Text(
-                    text = "轻触开始录音",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+                // Instant replay cards
+                if (recentReplays.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    ReplaySection(
+                        replays = recentReplays,
+                        currentlyPlayingItem = currentlyPlayingItem,
+                        isPlayerPlaying = isPlayerPlaying,
+                        playerViewModel = playerViewModel
+                    )
+                }
+
+                Spacer(Modifier.height(56.dp))
             }
         }
 
+        // Navigation arrow → RecordingsList
         IconButton(
-            onClick = onNavigateToPrevious,
+            onClick = onNavigateToNext,
             modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 8.dp)
+                .align(Alignment.CenterEnd)
+                .padding(end = 8.dp)
                 .size(48.dp)
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+            Icon(Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = "Go to List",
-                tint = Color.Gray
+                tint = Color.Gray)
+        }
+    }
+}
+
+@Composable
+private fun RecordingStatusRow(
+    isRecording: Boolean,
+    isPaused: Boolean,
+    statusLabel: String,
+    statusColor: androidx.compose.ui.graphics.Color
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        if (isRecording && !isPaused) {
+            val inf = rememberInfiniteTransition(label = "recDot")
+            val dotAlpha by inf.animateFloat(
+                initialValue = 0.3f, targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+                label = "dotAlpha"
             )
+            Box(Modifier.size(10.dp).clip(CircleShape).background(AccentRecord.copy(alpha = dotAlpha)))
+        }
+        Text(statusLabel, style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Medium, color = statusColor)
+    }
+}
+
+@Composable
+private fun RecordMainButton(
+    isRecording: Boolean,
+    isPaused: Boolean,
+    compact: Boolean,
+    onStartClick: () -> Unit,
+    onStopClick: () -> Unit
+) {
+    val outerSize = if (compact) 140.dp else 200.dp
+    val btnSize  = if (compact) 100.dp else 140.dp
+    val iconSize = if (compact) 38.dp  else 48.dp
+    val ringBase = if (compact) 88f    else 112f
+
+    Box(Modifier.size(outerSize), contentAlignment = Alignment.Center) {
+        if (isRecording && !isPaused) {
+            val inf = rememberInfiniteTransition(label = "ring")
+            val ringScale by inf.animateFloat(
+                initialValue = 0.95f, targetValue = 1.15f,
+                animationSpec = infiniteRepeatable(tween(1400), RepeatMode.Reverse),
+                label = "ringScale"
+            )
+            val ringAlpha by inf.animateFloat(
+                initialValue = 0.30f, targetValue = 0.05f,
+                animationSpec = infiniteRepeatable(tween(1400), RepeatMode.Reverse),
+                label = "ringAlpha"
+            )
+            Box(Modifier.size((ringBase * ringScale).dp).clip(CircleShape)
+                .background(AccentRecord.copy(alpha = ringAlpha)))
+        }
+        val mainColor   = if (!isRecording) AccentRecord else MaterialTheme.colorScheme.surface
+        val mainContent = if (!isRecording) MaterialTheme.colorScheme.onPrimary else AccentRecord
+        Surface(
+            onClick = if (isRecording) onStopClick else onStartClick,
+            modifier = Modifier.size(btnSize).shadow(Elevations.RaisedCard, CircleShape),
+            shape = CircleShape,
+            color = mainColor,
+            border = if (isRecording) androidx.compose.foundation.BorderStroke(3.dp, AccentRecord) else null
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (isRecording) Icons.Filled.Stop else Icons.Filled.Mic,
+                    contentDescription = if (isRecording) "Stop" else "Record",
+                    tint = mainContent,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingControlsRow(
+    isPaused: Boolean,
+    isSavingReplay: Boolean,
+    transcriptionActive: Boolean,
+    transcriptionLanguage: String,
+    onPauseClick: () -> Unit,
+    onResumeClick: () -> Unit,
+    onTriggerReplay: () -> Unit,
+    onStartTranscription: () -> Unit,
+    onStopTranscription: () -> Unit,
+    onToggleLanguage: () -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Pause / Resume
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            FilledTonalIconButton(
+                onClick = if (isPaused) onResumeClick else onPauseClick,
+                modifier = Modifier.size(52.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            ) {
+                Icon(
+                    imageVector = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(if (isPaused) "继续" else "暂停",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        // Instant Replay
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            FilledTonalIconButton(
+                onClick = onTriggerReplay,
+                enabled = !isSavingReplay && !isPaused,
+                modifier = Modifier.size(52.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            ) {
+                if (isSavingReplay) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Filled.FiberManualRecord,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp))
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text("15s回放",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        // Live Transcription toggle
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            FilledTonalIconButton(
+                onClick = if (transcriptionActive) onStopTranscription else onStartTranscription,
+                modifier = Modifier.size(52.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (transcriptionActive)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (transcriptionActive)
+                        MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Icon(Icons.Filled.Translate,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(if (transcriptionActive) "关闭转录" else "实时转录",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (transcriptionActive) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    // Language toggle – only when transcription is completely inactive
+    if (!transcriptionActive) {
+        Spacer(Modifier.height(12.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("转录语言:", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Surface(
+                onClick = onToggleLanguage,
+                shape = RoundedCornerShape(CornerRadii.Chip),
+                color = if (transcriptionLanguage == "CN")
+                    MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 2.dp
+            ) {
+                Text(
+                    text = if (transcriptionLanguage == "CN") "中文" else "English",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (transcriptionLanguage == "CN")
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplaySection(
+    replays: List<RecordingItem>,
+    currentlyPlayingItem: RecordingItem?,
+    isPlayerPlaying: Boolean,
+    playerViewModel: PlayerViewModel
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(Modifier.size(3.dp, 14.dp).background(
+            MaterialTheme.colorScheme.tertiary, RoundedCornerShape(2.dp)))
+        Text("即时回放", style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface)
+    }
+    Spacer(Modifier.height(8.dp))
+    replays.forEach { item ->
+        InstantReplayCard(
+            item = item,
+            isPlaying = currentlyPlayingItem?.id == item.id && isPlayerPlaying,
+            isCurrent = currentlyPlayingItem?.id == item.id,
+            onPlayPause = { playerViewModel.playRecording(item) },
+            onStop = { playerViewModel.stopPlayback() }
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun LiveSubtitleCard(
+    state: LiveTranscriptionState,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+    val displayText = buildString {
+        if (state.finalText.isNotEmpty()) append(state.finalText)
+        if (state.partialText.isNotEmpty()) {
+            if (isNotEmpty()) append("\n")
+            append(state.partialText)
+        }
+    }
+    LaunchedEffect(displayText) {
+        if (scrollState.maxValue > 0) scrollState.animateScrollTo(scrollState.maxValue)
+    }
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(CornerRadii.Large),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        if (state.isModelLoading) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+                    Text("正在加载语音模型…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp)
+                    .verticalScroll(scrollState)
+            ) {
+                Text(
+                    text = if (displayText.isNotEmpty()) displayText else "等待语音输入…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 24.sp,
+                    color = if (displayText.isNotEmpty())
+                        MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InstantReplayCard(
+    item: RecordingItem,
+    isPlaying: Boolean,
+    isCurrent: Boolean,
+    onPlayPause: () -> Unit,
+    onStop: () -> Unit
+) {
+    val accentColor = if (isCurrent) MaterialTheme.colorScheme.tertiary
+    else MaterialTheme.colorScheme.outline
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(CornerRadii.Medium),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isCurrent)
+                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+            else MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = Elevations.Card)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(Modifier.size(3.dp, 32.dp).background(accentColor, RoundedCornerShape(2.dp)))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.fileName,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1
+                )
+                Text(
+                    text = item.duration,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FilledTonalIconButton(
+                onClick = onPlayPause,
+                modifier = Modifier.size(36.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (isPlaying)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) "暂停" else "播放",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            if (isCurrent) {
+                FilledTonalIconButton(
+                    onClick = onStop,
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Icon(Icons.Filled.Stop, contentDescription = "结束",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }
