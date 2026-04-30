@@ -4,12 +4,16 @@
 
 ## 功能概览
 
-### 录音
-- 高质量录音（M4A 格式，192 kbps），支持暂停/继续与实时时长显示
-- 录音文件保存至公共存储路径，支持外部访问
-- 录音列表展示文件名、录制日期、时长，支持重命名
+### 录音主界面（首页）
+应用启动后直接进入录音主界面，提供：
+- **高质量录音**：基于 `AudioRecord` 获取原始 PCM 流，经 `MediaCodec + MediaMuxer` 实时编码为 M4A（64 kbps AAC，16 kHz），支持暂停/继续与实时时长显示
+- **即时回放**：录音过程中随时点击"15s回放"按钮，将最近 15 秒音频单独截取并编码为独立片段，自动进入录音文件列表；录音界面最多同时显示最新 3 条回放的播放控制（播放/暂停、停止）
+- **实时转录**：点击"实时转录"按钮，加载 Vosk 模型后将原始 PCM 流直接送入识别器，转录结果以滚动字幕形式实时展示；激活后界面布局自动切换为字幕模式，支持中文/英文切换；录音结束、新录音开始或手动关闭时退出字幕模式
 
-### 语音转录
+### 录音管理
+- 录音文件（含即时回放片段）统一展示于录音列表，支持重命名、删除、分享、导入外部音频
+
+### 语音转录（离线/事后）
 - **本地转录（Vosk）**：离线运行，支持中文与英文，无需网络
   - 转录管线：M4A → MediaExtractor 解压 → MediaCodec 解码为 PCM → TarsosDSP 重采样至 16 kHz → Vosk 转录
   - 输出带时间戳的字幕文件
@@ -46,9 +50,11 @@
 | UI | Jetpack Compose + Material 3 |
 | 架构 | MVVM（ViewModel + StateFlow） |
 | 数据库 | Room |
-| 本地 ASR | Vosk（中文 / 英文离线模型） |
+| 录音引擎 | AudioRecord → MediaCodec + MediaMuxer（PCM 三路并行） |
+| 实时转录 | Vosk（流式 PCM 输入，中文 / 英文离线模型） |
+| 事后转录 | Vosk（本地）/ 讯飞（云端） |
+| 音频处理 | MediaExtractor / MediaCodec + TarsosDSP |
 | 本地 LLM | LiteRT-LM（Qwen 2.5 1.5B Instruct，INT8 量化） |
-| 音频处理 | MediaRecorder / MediaExtractor / MediaCodec + TarsosDSP |
 | 云端 ASR | 讯飞语音转写标准版 API |
 | 云端 LLM | 阿里云 DashScope — Qwen3-Max / Qwen Omni Plus |
 | 联网搜索 | Tavily Search API（可选） |
