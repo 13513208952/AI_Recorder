@@ -8,7 +8,7 @@ import java.io.File
 
 class AacEncoder(
     private val sampleRate: Int = PcmAudioEngine.SAMPLE_RATE,
-    private val bitrate: Int = 64_000
+    private val bitrate: Int = 320_000
 ) {
     private var codec: MediaCodec? = null
     private var muxer: MediaMuxer? = null

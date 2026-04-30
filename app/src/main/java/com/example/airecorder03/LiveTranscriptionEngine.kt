@@ -23,6 +23,12 @@ data class LiveTranscriptionState(
 
 class LiveTranscriptionEngine(private val context: Context) {
 
+    companion object {
+        private const val VOSK_SAMPLE_RATE = 16000
+        // Downsample ratio: PcmAudioEngine.SAMPLE_RATE / VOSK_SAMPLE_RATE = 3
+        private val DECIMATE_FACTOR = PcmAudioEngine.SAMPLE_RATE / VOSK_SAMPLE_RATE
+    }
+
     private val _state = MutableStateFlow(LiveTranscriptionState())
     val state: StateFlow<LiveTranscriptionState> = _state
 
@@ -34,7 +40,7 @@ class LiveTranscriptionEngine(private val context: Context) {
         return withContext(Dispatchers.IO) {
             try {
                 val model = loadModel(language)
-                recognizer = Recognizer(model, PcmAudioEngine.SAMPLE_RATE.toFloat())
+                recognizer = Recognizer(model, VOSK_SAMPLE_RATE.toFloat())
                 active = true
                 _state.value = LiveTranscriptionState(isActive = true, language = language)
                 true
@@ -46,11 +52,25 @@ class LiveTranscriptionEngine(private val context: Context) {
         }
     }
 
+    // Decimate 48 kHz mono 16-bit PCM to 16 kHz by keeping every DECIMATE_FACTOR-th sample.
+    private fun downsampleToVosk(input: ByteArray, inputSize: Int): ByteArray {
+        val inputSamples = inputSize / PcmAudioEngine.BYTES_PER_SAMPLE
+        val outputSamples = inputSamples / DECIMATE_FACTOR
+        val output = ByteArray(outputSamples * PcmAudioEngine.BYTES_PER_SAMPLE)
+        for (i in 0 until outputSamples) {
+            val src = i * DECIMATE_FACTOR * PcmAudioEngine.BYTES_PER_SAMPLE
+            output[i * 2] = input[src]
+            output[i * 2 + 1] = input[src + 1]
+        }
+        return output
+    }
+
     fun processPcm(data: ByteArray, size: Int) {
         if (!active) return
         val rec = recognizer ?: return
         try {
-            val accepted = rec.acceptWaveForm(data, size)
+            val downsampled = downsampleToVosk(data, size)
+            val accepted = rec.acceptWaveForm(downsampled, downsampled.size)
             val cur = _state.value
             if (accepted) {
                 val text = parseText(rec.result)

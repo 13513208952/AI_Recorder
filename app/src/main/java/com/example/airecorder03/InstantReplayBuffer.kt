@@ -80,7 +80,7 @@ class InstantReplayBuffer(
 
 private fun encodeToM4a(pcm: ByteArray, outputFile: File, sampleRate: Int) {
     val fmt = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1).apply {
-        setInteger(MediaFormat.KEY_BIT_RATE, 64_000)
+        setInteger(MediaFormat.KEY_BIT_RATE, 192_000)
         setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
         setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
     }
@@ -92,7 +92,7 @@ private fun encodeToM4a(pcm: ByteArray, outputFile: File, sampleRate: Int) {
     var trackIdx = -1
     var muxerStarted = false
     val info = MediaCodec.BufferInfo()
-    val chunkSize = 3200
+    val chunkSize = 9600
     var offset = 0
     var totalIn = 0L
     var eos = false

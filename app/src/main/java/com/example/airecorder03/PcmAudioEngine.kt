@@ -12,11 +12,11 @@ import kotlinx.coroutines.launch
 
 class PcmAudioEngine {
     companion object {
-        const val SAMPLE_RATE = 16000
+        const val SAMPLE_RATE = 48000
         const val BYTES_PER_SAMPLE = 2  // 16-bit PCM
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-        private const val READ_CHUNK_BYTES = 3200  // 100 ms at 16 kHz
+        private const val READ_CHUNK_BYTES = 9600  // 100 ms at 48 kHz
     }
 
     interface PcmListener {
