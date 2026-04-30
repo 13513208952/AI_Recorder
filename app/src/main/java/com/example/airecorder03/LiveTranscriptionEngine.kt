@@ -33,6 +33,7 @@ class LiveTranscriptionEngine(private val context: Context) {
     val state: StateFlow<LiveTranscriptionState> = _state
 
     private var recognizer: Recognizer? = null
+    private val recognizerLock = Any()
     @Volatile private var active = false
 
     suspend fun start(language: String): Boolean {
@@ -67,30 +68,34 @@ class LiveTranscriptionEngine(private val context: Context) {
 
     fun processPcm(data: ByteArray, size: Int) {
         if (!active) return
-        val rec = recognizer ?: return
-        try {
-            val downsampled = downsampleToVosk(data, size)
-            val accepted = rec.acceptWaveForm(downsampled, downsampled.size)
-            val cur = _state.value
-            if (accepted) {
-                val text = parseText(rec.result)
-                if (text.isNotBlank()) {
-                    _state.value = cur.copy(
-                        finalText = if (cur.finalText.isEmpty()) text else "${cur.finalText}\n$text",
-                        partialText = ""
-                    )
+        synchronized(recognizerLock) {
+            val rec = recognizer ?: return
+            try {
+                val downsampled = downsampleToVosk(data, size)
+                val accepted = rec.acceptWaveForm(downsampled, downsampled.size)
+                val cur = _state.value
+                if (accepted) {
+                    val text = parseText(rec.result)
+                    if (text.isNotBlank()) {
+                        _state.value = cur.copy(
+                            finalText = if (cur.finalText.isEmpty()) text else "${cur.finalText}\n$text",
+                            partialText = ""
+                        )
+                    }
+                } else {
+                    val partial = parsePartial(rec.partialResult)
+                    _state.value = cur.copy(partialText = partial)
                 }
-            } else {
-                val partial = parsePartial(rec.partialResult)
-                _state.value = cur.copy(partialText = partial)
-            }
-        } catch (_: Exception) {}
+            } catch (_: Exception) {}
+        }
     }
 
     fun stop() {
         active = false
-        try { recognizer?.close() } catch (_: Exception) {}
-        recognizer = null
+        synchronized(recognizerLock) {
+            try { recognizer?.close() } catch (_: Exception) {}
+            recognizer = null
+        }
         val cur = _state.value
         _state.value = cur.copy(isActive = false, partialText = "")
     }
